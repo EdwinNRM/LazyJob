@@ -1,0 +1,43 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = "file:./dev.db"
+}
+
+model Job {
+  id          String   @id @default(uuid())
+  title       String
+  company     String
+  platform    String
+  url         String   @unique
+  description String
+  salary      String?
+  location    String?
+  status      String   @default("discovered")
+  columnOrder Int      @default(0)
+  appliedAt   DateTime?
+  cvPath      String?
+  notes       String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+model Setting {
+  id        String   @id @default(uuid())
+  key       String   @unique
+  value     String
+  updatedAt DateTime @updatedAt
+}
+
+model ScrapeLog {
+  id           String   @id @default(uuid())
+  platform     String
+  query        String
+  resultsCount Int      @default(0)
+  success      Boolean  @default(true)
+  errorMessage String?
+  createdAt    DateTime @default(now())
+}
