@@ -80,7 +80,19 @@ export function jobRoutes(prisma: PrismaClient) {
       })
 
       if (data.status === 'applying') {
-        applyForJob(prisma, job).catch(console.error)
+        const autoApplySetting = await prisma.setting.findUnique({
+          where: { key: 'autoApplyEnabled' },
+        })
+
+        const autoApplyEnabled = autoApplySetting?.value === 'true'
+
+        if (autoApplyEnabled) {
+          applyForJob(prisma, job).catch(console.error)
+        } else {
+          console.log(
+            `[Jobs] Vaga "${job.title}" movida para "Candidatar" mas auto-apply está desativado. Nada foi enviado.`
+          )
+        }
       }
 
       res.json(job)

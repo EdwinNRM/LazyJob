@@ -34,9 +34,13 @@ export const COLUMNS: Column[] = [
   { id: 'rejected', title: 'Recusada / Arquivada', color: 'border-t-red-500' },
 ]
 
+export type LLMProvider = 'ollama' | 'openai' | 'anthropic' | 'none'
+
 export interface Settings {
   cvBasePath: string
-  llmProvider: 'openai' | 'anthropic'
+  llmProvider: LLMProvider
+  llmModel: string
+  llmBaseUrl: string
   llmApiKey: string
   searchQueries: string[]
   searchLocations: string[]

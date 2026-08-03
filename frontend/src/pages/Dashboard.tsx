@@ -1,6 +1,6 @@
 import { useState, useCallback } from 'react'
 import toast from 'react-hot-toast'
-import { useMutation } from '@tanstack/react-query'
+import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { useJobs, useCreateJob, useDeleteJob, useTriggerApply } from '../hooks/useJobs'
 import { useSettings } from '../hooks/useSettings'
 import { KanbanBoard } from '../components/kanban/KanbanBoard'
@@ -11,6 +11,7 @@ export function Dashboard() {
   const [showAddModal, setShowAddModal] = useState(false)
   const [showDetailModal, setShowDetailModal] = useState<Job | null>(null)
   const [searchQuery, setSearchQuery] = useState('')
+  const queryClient = useQueryClient()
   const { data: jobs, isLoading } = useJobs({ query: searchQuery || undefined })
   const { data: settings } = useSettings()
   const createJob = useCreateJob()
@@ -19,20 +20,25 @@ export function Dashboard() {
 
   const runScrapeMutation = useMutation({
     mutationFn: runScrape,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['jobs'] })
+      queryClient.invalidateQueries({ queryKey: ['scrapeLogs'] })
+    },
   })
 
   const handleRunScrape = useCallback(async () => {
     const queries = settings?.searchQueries
       ? JSON.parse(settings.searchQueries)
-      : ['developer', 'software engineer']
+      : ['analista de desenvolvimento de sistemas pleno', 'analista de sistemas pleno']
 
     const locations = settings?.searchLocations
       ? JSON.parse(settings.searchLocations)
-      : ['Brasil', 'Remoto']
+      : ['Remoto', 'São José do Rio Preto']
 
     toast.promise(runScrapeMutation.mutateAsync({ queries, locations }), {
-      loading: 'Buscando vagas...',
-      success: 'Busca concluída!',
+      loading: 'Buscando vagas... (pode levar alguns minutos)',
+      success: (data: { resultsCount?: number }) =>
+        `Busca concluída! ${data.resultsCount ?? 0} vagas encontradas`,
       error: 'Erro na busca',
     })
   }, [settings, runScrapeMutation])

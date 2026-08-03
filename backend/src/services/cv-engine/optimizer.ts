@@ -1,7 +1,21 @@
+import type { LLMConfig } from '../llm'
+import { runLLM } from '../llm'
+
 export async function optimizeCV(
   cvText: string,
-  jobDescription: string
+  jobDescription: string,
+  llm?: LLMConfig
 ): Promise<string> {
+  if (llm && llm.provider && llm.provider !== 'none') {
+    try {
+      const prompt = buildLLMPrompt(cvText, jobDescription)
+      const result = await runLLM(prompt, llm)
+      if (result.trim()) return result.trim()
+    } catch (error) {
+      console.warn('[Optimizer] LLM falhou, usando fallback local:', error)
+    }
+  }
+
   const sections = extractSections(cvText)
   const keywords = extractKeywords(jobDescription)
 
@@ -12,6 +26,24 @@ export async function optimizeCV(
   }
 
   return formatCV(optimizedSections)
+}
+
+function buildLLMPrompt(cvText: string, jobDescription: string): string {
+  return `Você é um especialista em otimização de currículos para o mercado brasileiro de TI.
+
+Reescreva o currículo abaixo para maximizar o encaixe com a vaga, seguindo estas regras:
+- Responda APENAS com o currículo otimizado em português, sem comentários nem introdução.
+- Reorganize as seções priorizando o que a vaga pede: resumo/objetivo, experiências, habilidades, educação, certificações, idiomas.
+- Destaque palavras-chave e habilidades da descrição da vaga quando existirem no currículo.
+- NÃO invente experiências, empresas, certificações ou dados que não estejam no currículo original.
+- Mantenha os fatos e dados de contato do original; apenas reordene e reformule o texto.
+- Se a vaga pedir algo ausente no currículo, não invente — apenas não cite.
+
+DESCRIÇÃO DA VAGA:
+${jobDescription}
+
+CURRÍCULO ORIGINAL:
+${cvText}`
 }
 
 function extractSections(text: string): Record<string, string> {
@@ -47,7 +79,7 @@ function extractSections(text: string): Record<string, string> {
   for (let i = 0; i < matches.length; i++) {
     const start = matches[i].index
     const end = matches[i + 1]?.index || text.length
-    const sectionText = text.substring(start, end).replace(/^[^:\n]*[:]?\s*/gm, '').trim()
+    const sectionText = text.substring(start, end).replace(/^[^\n]*\n?/, '').trim()
     sections[matches[i].key] = sectionText
   }
 

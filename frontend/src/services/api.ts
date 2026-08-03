@@ -66,8 +66,8 @@ export async function runScrape(data: {
   queries: string[]
   locations?: string[]
   platforms?: string[]
-}): Promise<{ message: string }> {
-  return request<{ message: string }>('/scrape/run', {
+}): Promise<{ message: string; resultsCount?: number }> {
+  return request<{ message: string; resultsCount?: number }>('/scrape/run', {
     method: 'POST',
     body: JSON.stringify(data),
   })

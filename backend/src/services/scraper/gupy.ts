@@ -1,4 +1,4 @@
-import { chromium } from 'playwright'
+import type { Page } from 'playwright'
 
 declare const document: any
 
@@ -12,38 +12,31 @@ interface ScrapedJob {
   location?: string
 }
 
-export async function scrapeGupy(query: string, _location: string): Promise<ScrapedJob[]> {
-  const browser = await chromium.launch({ headless: true })
-  const context = await browser.newContext()
-  const page = await context.newPage()
+export async function scrapeGupy(page: Page, query: string, _location: string): Promise<ScrapedJob[]> {
+  const searchUrl = `https://portal.gupy.io/job-search/term=${encodeURIComponent(query).replace(/%20/g, '+')}`
 
-  try {
-    const searchUrl = `https://portal.gupy.io/job-search?term=${encodeURIComponent(query)}`
-    await page.goto(searchUrl, { waitUntil: 'networkidle', timeout: 30000 })
+  await page.goto(searchUrl, { waitUntil: 'domcontentloaded', timeout: 30000 })
+  await page.waitForTimeout(4000)
+  await page.waitForSelector('a[href*="/job/"]', { timeout: 10000 }).catch(() => {})
+  await page.waitForTimeout(2000)
 
-    await page.waitForSelector('[data-testid="job-list-item"]', { timeout: 10000 }).catch(() => {})
+  const jobs = await page.evaluate(() => {
+    const anchors = Array.from(document.querySelectorAll('a[href*="/job/"]')).slice(0, 15)
+    return anchors.map((a: any) => {
+      const lines = (a.innerText || '')
+        .split('\n')
+        .map((l: string) => l.trim())
+        .filter(Boolean)
+      return {
+        title: lines[1] || '',
+        company: lines[0] || '',
+        platform: 'gupy',
+        url: a.href || '',
+        description: '',
+        location: lines[2] || undefined,
+      }
+    }).filter((j: any) => j.title && j.url)
+  })
 
-    const jobs = await page.evaluate(() => {
-      const cards = document.querySelectorAll('[data-testid="job-list-item"]')
-      return Array.from(cards).slice(0, 15).map((card: any) => {
-        const titleEl = card.querySelector('[data-testid="job-list-item-title"]')
-        const companyEl = card.querySelector('[data-testid="job-list-item-headline"]')
-        const locationEl = card.querySelector('[data-testid="job-list-item-location"]')
-        const linkEl = card.querySelector('a')
-
-        return {
-          title: titleEl?.innerText?.trim() || '',
-          company: companyEl?.innerText?.trim() || '',
-          platform: 'gupy',
-          url: linkEl?.href || '',
-          description: '',
-          location: locationEl?.innerText?.trim() || undefined,
-        }
-      }).filter((j: any) => j.title && j.url)
-    })
-
-    return jobs
-  } finally {
-    await browser.close()
-  }
+  return jobs
 }

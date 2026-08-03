@@ -1,26 +1,33 @@
 import { Router } from 'express'
 import { PrismaClient } from '@prisma/client'
 import { scrapeAllPlatforms } from '../services/scraper'
+import { DEFAULT_QUERIES, DEFAULT_LOCATIONS } from '../services/scheduler'
 
 export function scraperRoutes(prisma: PrismaClient) {
   const router = Router()
 
   router.post('/run', async (req, res) => {
     try {
-      const { queries = ['developer'], locations = ['Brasil'], platforms } = req.body
+      const { queries = DEFAULT_QUERIES, locations = DEFAULT_LOCATIONS, platforms } = req.body
 
-      res.json({ message: 'Scrape iniciado em background' })
+      const headlessSetting = await prisma.setting.findUnique({
+        where: { key: 'browserHeadless' },
+      })
+
+      const headless = headlessSetting ? headlessSetting.value !== 'false' : true
 
       const results = await scrapeAllPlatforms({
         queries,
         locations,
         platforms,
         prisma,
+        headless,
       })
 
-      console.log(`[Scraper] Concluído: ${results.length} vagas encontradas`)
+      res.json({ message: 'Scrape concluído', resultsCount: results.length })
     } catch (error) {
       console.error('[Scraper] Erro:', error)
+      res.status(500).json({ error: 'Erro no scrape', details: String(error) })
     }
   })
 

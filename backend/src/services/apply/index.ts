@@ -1,6 +1,8 @@
 import { PrismaClient, Job } from '@prisma/client'
 import path from 'path'
+import type { LLMConfig } from '../llm'
 import { processCV } from '../cv-engine'
+import { readLLMConfig } from '../llm'
 import { applyLinkedIn } from './linkedin-apply'
 import { applyIndeed } from './indeed-apply'
 import { applyGupy } from './gupy-apply'
@@ -30,7 +32,9 @@ export async function applyForJob(prisma: PrismaClient, job: Job): Promise<boole
     }
 
     console.log(`[Apply] Gerando CV otimizado...`)
-    const cvResult = await processCV(cvPath, job.description, CV_OUTPUT_DIR, job.id)
+    const llm = await readLLMConfig(prisma)
+    if (llm) console.log(`[Apply] LLM: ${llm.provider} (modelo: ${llm.model || 'padrão'})`)
+    const cvResult = await processCV(cvPath, job.description, CV_OUTPUT_DIR, job.id, llm)
 
     await prisma.job.update({
       where: { id: job.id },

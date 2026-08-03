@@ -1,4 +1,5 @@
 import fs from 'fs'
+import type { LLMConfig } from '../llm'
 import { parseCV } from './parser'
 import { optimizeCV } from './optimizer'
 import { generateCV } from './generator'
@@ -13,11 +14,12 @@ export async function processCV(
   cvPath: string,
   jobDescription: string,
   outputDir: string,
-  jobId: string
+  jobId: string,
+  llm?: LLMConfig
 ): Promise<CVEngineResult> {
   const buffer = fs.readFileSync(cvPath)
   const originalText = await parseCV(buffer)
-  const optimizedText = await optimizeCV(originalText, jobDescription)
+  const optimizedText = await optimizeCV(originalText, jobDescription, llm)
   const pdfPath = `${outputDir}/cv-${jobId}.pdf`
 
   if (!fs.existsSync(outputDir)) {

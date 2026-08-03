@@ -1,10 +1,12 @@
 import { useSortable } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
+import { useCallback } from 'react'
 import { Job } from '../../types'
 
 interface JobCardProps {
   job: Job
   onClick?: () => void
+  lastDragEnd?: React.MutableRefObject<number>
 }
 
 const PLATFORM_LABELS: Record<string, string> = {
@@ -14,7 +16,7 @@ const PLATFORM_LABELS: Record<string, string> = {
   glassdoor: 'Glassdoor',
 }
 
-export function JobCard({ job, onClick }: JobCardProps) {
+export function JobCard({ job, onClick, lastDragEnd }: JobCardProps) {
   const {
     attributes,
     listeners,
@@ -28,7 +30,13 @@ export function JobCard({ job, onClick }: JobCardProps) {
     transform: CSS.Transform.toString(transform),
     transition,
     opacity: isDragging ? 0.5 : 1,
+    touchAction: 'none' as const,
   }
+
+  const handleClick = useCallback(() => {
+    if (lastDragEnd && Date.now() - lastDragEnd.current < 300) return
+    onClick?.()
+  }, [onClick, lastDragEnd])
 
   return (
     <div
@@ -37,7 +45,7 @@ export function JobCard({ job, onClick }: JobCardProps) {
       {...attributes}
       {...listeners}
       className="kanban-card"
-      onClick={onClick}
+      onClick={handleClick}
       role="button"
       tabIndex={0}
     >

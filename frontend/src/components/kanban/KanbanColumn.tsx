@@ -8,6 +8,7 @@ interface KanbanColumnProps {
   jobs: Job[]
   onJobClick: (job: Job) => void
   onJobDoubleClick: (job: Job) => void
+  lastDragEnd: React.MutableRefObject<number>
 }
 
 export function KanbanColumn({
@@ -15,6 +16,7 @@ export function KanbanColumn({
   jobs,
   onJobClick,
   onJobDoubleClick,
+  lastDragEnd,
 }: KanbanColumnProps) {
   const { setNodeRef, isOver } = useDroppable({ id: column.id })
 
@@ -52,6 +54,7 @@ export function KanbanColumn({
                 key={job.id}
                 job={job}
                 onClick={() => onJobClick(job)}
+                lastDragEnd={lastDragEnd}
               />
             ))
           )}

@@ -36,7 +36,7 @@ export default function App() {
         </div>
       </nav>
 
-      <main className="flex-1 overflow-hidden">
+      <main className="flex-1 overflow-y-auto overflow-x-hidden">
         <Routes>
           <Route path="/" element={<Dashboard />} />
           <Route path="/settings" element={<Settings />} />

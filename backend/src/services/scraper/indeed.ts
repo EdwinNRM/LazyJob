@@ -1,4 +1,5 @@
-import { chromium } from 'playwright'
+import type { Page } from 'playwright'
+import { isCloudflareChallenge, isSpamOrAuthWall, waitForChallengeClear } from './utils'
 
 declare const document: any
 
@@ -12,31 +13,42 @@ interface ScrapedJob {
   location?: string
 }
 
-export async function scrapeIndeed(query: string, location: string): Promise<ScrapedJob[]> {
-  const browser = await chromium.launch({ headless: true })
-  const context = await browser.newContext()
-  const page = await context.newPage()
+export async function scrapeIndeed(page: Page, query: string, location: string): Promise<ScrapedJob[]> {
+  const searchUrl = `https://br.indeed.com/jobs?q=${encodeURIComponent(query)}&l=${encodeURIComponent(location)}`
 
-  try {
-    const searchUrl = `https://br.indeed.com/jobs?q=${encodeURIComponent(query)}&l=${encodeURIComponent(location)}`
-    await page.goto(searchUrl, { waitUntil: 'networkidle', timeout: 30000 })
+  await page.goto(searchUrl, { waitUntil: 'domcontentloaded', timeout: 30000 })
+  await page.waitForTimeout(3000)
 
-    await page.waitForSelector('.job_seen_beacon', { timeout: 10000 }).catch(() => {})
+  if (await isCloudflareChallenge(page)) {
+    const cleared = await waitForChallengeClear(page)
+    if (!cleared) {
+      console.log('[Indeed] Bloqueado por Cloudflare. Retornando 0 vagas.')
+      return []
+    }
+  }
+
+  if (await isSpamOrAuthWall(page)) {
+    console.log('[Indeed] Página de autenticação/anti-spam detectada. Retornando 0 vagas.')
+    return []
+  }
+
+  await page.waitForSelector('.job_seen_beacon', { timeout: 8000 }).catch(() => {})
+  await page.waitForTimeout(2000)
 
     const jobs = await page.evaluate(() => {
       const cards = document.querySelectorAll('.job_seen_beacon')
       return Array.from(cards).slice(0, 15).map((card: any) => {
-        const titleEl = card.querySelector('h2.jobTitle a')
-        const companyEl = card.querySelector('[data-testid="company-name"]')
-        const locationEl = card.querySelector('[data-testid="text-location"]')
-        const salaryEl = card.querySelector('[data-testid="attribute_snippet_testid"]')
-        const linkEl = card.querySelector('h2.jobTitle a')
+        const linkEl = card.querySelector('a.jcs-JobTitle') || card.querySelector('h2.jobTitle a, h3.jobTitle a')
+        const companyEl = card.querySelector('[data-testid="company-name"]') || card.querySelector('.companyName')
+        const locationEl = card.querySelector('[data-testid="text-location"]') || card.querySelector('.companyLocation')
+        const salaryEl = card.querySelector('[data-testid="attribute_snippet_testid"]') || card.querySelector('.salary-snippet')
 
+        const href = linkEl?.getAttribute('href') || ''
         return {
-          title: titleEl?.innerText?.trim() || '',
+          title: linkEl?.innerText?.trim() || '',
           company: companyEl?.innerText?.trim() || '',
           platform: 'indeed',
-          url: linkEl?.href ? `https://br.indeed.com${linkEl.getAttribute('href') || ''}` : '',
+          url: href ? `https://br.indeed.com${href.startsWith('/') ? href : `/${href}`}` : '',
           description: '',
           salary: salaryEl?.innerText?.trim() || undefined,
           location: locationEl?.innerText?.trim() || undefined,
@@ -44,8 +56,5 @@ export async function scrapeIndeed(query: string, location: string): Promise<Scr
       }).filter((j: any) => j.title && j.url)
     })
 
-    return jobs
-  } finally {
-    await browser.close()
-  }
+  return jobs
 }

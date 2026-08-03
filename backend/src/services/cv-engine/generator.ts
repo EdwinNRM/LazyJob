@@ -1,5 +1,6 @@
 import { PDFDocument, StandardFonts, rgb } from 'pdf-lib'
 import fs from 'fs'
+import path from 'path'
 
 export async function generateCV(text: string, outputPath: string): Promise<string> {
   const doc = await PDFDocument.create()
@@ -75,6 +76,7 @@ export async function generateCV(text: string, outputPath: string): Promise<stri
   }
 
   const pdfBytes = await doc.save()
+  fs.mkdirSync(path.dirname(outputPath), { recursive: true })
   fs.writeFileSync(outputPath, pdfBytes)
 
   return outputPath
