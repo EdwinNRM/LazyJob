@@ -13,7 +13,7 @@ LazyJob é um sistema full-stack local que automatiza o fluxo completo de busca 
 | ORM | Prisma |
 | Banco | SQLite |
 | Automação | Playwright |
-| CV Engine | pdf-parse + OpenAI/Anthropic API + PDF-lib/LibreOffice |
+| CV Engine | pdf-parse + Ollama (qwen2.5-coder:7b) / OpenAI / Anthropic + PDF-lib |
 | Agendamento | node-cron |
 
 ## Estrutura do Projeto
@@ -147,7 +147,38 @@ lazyjob/
 5. **Candidatada** — Vagas já aplicadas
 6. **Recusada/Arquivada** — Vagas descartadas
 
-## Fluxo de Automação (Pipeline de Candidatura)
+## Plano: Ajustar CV (Coluna "Ajustar CV")
+
+### Problema
+Atualmente, mover um card para "Ajustar CV" não dispara nenhuma ação. O CV Engine só é chamado quando o card chega em "Candidatar" (auto-apply). O usuário quer poder ajustar o CV manualmente antes de candidatar.
+
+### Solução
+Quando um card é movido para `adjusting_cv`, o backend dispara o CV Engine para gerar o PDF otimizado e salva o caminho em `cvPath`. O status muda para `adjusting_cv`. O usuário pode revisar o CV gerado no modal de detalhes e decidir se candidatar (mover para "Candidatar") ou recusar.
+
+### Fluxo atualizado
+```
+1. Usuário move card para "Ajustar CV"
+2. Backend recebe PATCH /api/jobs/:id (status: adjusting_cv)
+3. CV Engine é acionado (mesmo fluxo de "Candidatar"):
+   a. Parse do CV base (PDF)
+   b. Extração de skills e experiência
+   c. Análise da descrição da vaga (via LLM local Ollama)
+   d. Geração de CV otimizado (PDF) em generated-cvs/cv-{id}.pdf
+4. Status atualizado para "adjusting_cv", cvPath salvo
+5. Usuário revisa o CV no modal de detalhes
+6. Usuário decide: mover para "Candidatar" (dispara auto-apply) ou "Recusada"
+```
+
+### Implementação necessária
+- `backend/src/routes/jobs.ts`: PATCH handler para `adjusting_cv` deve chamar `processCV` e salvar `cvPath`
+- `backend/src/services/apply/index.ts`: refatorar `applyForJob` para extrair a lógica de geração de CV em uma função reutilizável `generateOptimizedCV` chamada tanto por `adjusting_cv` quanto por `applying`
+- `frontend/src/pages/Dashboard.tsx`: ao abrir o modal de detalhes de uma vaga em `adjusting_cv`, mostrar o botão "Abrir CV Gerado" com link para o PDF
+
+### Critérios de aceite
+- Mover para "Ajustar CV" gera o PDF otimizado sem candidatar
+- O PDF fica disponível para download/revisão no modal de detalhes
+- Mover de "Ajustar CV" para "Candidatar" dispara o auto-apply normalmente
+- Se o LLM estiver offline, usa fallback por regras locais (comportamento atual)
 
 ```
 1. Usuário move card para coluna "Candidatar"
@@ -170,7 +201,7 @@ lazyjob/
 
 Cada scraper utiliza Playwright para navegar e extrair vagas:
 
-- **LinkedIn**: Busca por palavras-chave + localização, extrai lista de resultados, clica em cada vaga para obter descrição completa
+- **LinkedIn**: Busca por palavras-chave + localização via URL com `f_WT=2` (remote filter) e `geoId=106057199` (Brasil) para vagas remotas; usa `location=` param para buscas por cidade. Clica em cada vaga para obter descrição completa. **Problema conhecido**: LinkedIn frequentemente bloqueia scrapers anônimos exigindo login. Mesmo com modo não-headless, pode retornar 0 vagas sem credenciais de sessão. Solução planejada: suporte a cookies de sessão salvos nas configurações (`linkedinSessionCookie`) para contornar o bloqueio anti-bot.
 - **Indeed**: Busca por palavras-chave, extrai resultados com paginação
 - **Gupy**: Busca por palavras-chave no portal Gupy
 - **Glassdoor**: Busca por palavras-chave + localização
@@ -199,9 +230,11 @@ Estratégias anti-detecção:
 ## Configurações do Usuário
 
 - `cvBasePath` — Caminho do arquivo PDF do currículo base
-- `llmProvider` — `openai` | `anthropic`
-- `llmApiKey` — Chave da API
-- `linkedinEmail` / `linkedinPassword` — Credenciais LinkedIn
+- `llmProvider` — `ollama` | `openai` | `anthropic` | `none`
+- `llmModel` — Nome do modelo (ex.: `qwen2.5-coder:7b` para Ollama)
+- `llmBaseUrl` — URL do servidor LLM (padrão: `http://localhost:11434`)
+- `llmApiKey` — Chave da API (só OpenAI/Anthropic)
+- `linkedinSessionCookie` — Cookie de sessão do LinkedIn para contornar anti-bot (opcional)
 - `indeedEmail` / `indeedPassword` — Credenciais Indeed
 - `gupyEmail` / `gupyPassword` — Credenciais Gupy
 - `glassdoorEmail` / `glassdoorPassword` — Credenciais Glassdoor
