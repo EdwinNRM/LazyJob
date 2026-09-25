@@ -1,27 +1,29 @@
 import { PrismaClient } from '@prisma/client'
 import { DEFAULT_QUERIES, DEFAULT_LOCATIONS } from '../src/services/scheduler'
 
+process.env.DATABASE_URL ||= 'file:./dev.db'
 const prisma = new PrismaClient()
 
 async function main() {
   const defaults: Record<string, string> = {
-    cvBasePath: 'C:\\Users\\edwin\\Downloads\\CV_Edwin_Medina.pdf',
+    cvBasePath: '',
     searchQueries: JSON.stringify(DEFAULT_QUERIES),
     searchLocations: JSON.stringify(DEFAULT_LOCATIONS),
-    autoApplyEnabled: 'false',
-    browserHeadless: 'false',
-    llmProvider: 'ollama',
-    llmModel: 'qwen2.5-coder:7b',
+    llmProvider: 'none',
+    llmModel: 'qwen3:8b',
     llmBaseUrl: 'http://localhost:11434',
+    enabledSources: JSON.stringify(['nerdin']),
+    rssUrls: '[]',
+    publicApiUrls: '[]',
   }
 
   for (const [key, value] of Object.entries(defaults)) {
     await prisma.setting.upsert({
       where: { key },
-      update: { value },
+      update: {},
       create: { key, value },
     })
-    console.log(`[Seed] ${key} = ${value}`)
+    console.log(`[Seed] ${key}: preservado ou criado`)
   }
 
   await prisma.$disconnect()

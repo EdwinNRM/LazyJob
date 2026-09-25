@@ -11,6 +11,7 @@ vi.mock('playwright', () => ({
           waitForSelector: vi.fn().mockResolvedValue(undefined),
           waitForTimeout: vi.fn().mockResolvedValue(undefined),
           evaluate: vi.fn().mockResolvedValue([]),
+          locator: vi.fn().mockReturnValue({ evaluateAll: vi.fn().mockResolvedValue([]) }),
           close: vi.fn().mockResolvedValue(undefined),
         }),
         close: vi.fn().mockResolvedValue(undefined),

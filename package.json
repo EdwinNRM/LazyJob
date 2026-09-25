@@ -1,0 +1,15 @@
+{
+  "name": "lazyjob",
+  "version": "1.1.0",
+  "private": true,
+  "engines": { "node": ">=22.12.0" },
+  "scripts": {
+    "setup": "npm --prefix backend ci && npm --prefix frontend ci && npm --prefix backend run setup && npm run build",
+    "build": "npm --prefix backend run build && npm --prefix frontend run build",
+    "start": "npm --prefix backend start",
+    "test": "npm --prefix backend test && npm --prefix frontend test",
+    "test:e2e": "npm --prefix frontend run test:e2e",
+    "check": "npm run build && npm test && npm run test:e2e",
+    "browser:install": "npm --prefix backend exec -- playwright install chromium"
+  }
+}

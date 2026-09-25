@@ -23,11 +23,11 @@ function NavLink({ to, children }: { to: string; children: React.ReactNode }) {
 export default function App() {
   return (
     <div className="h-screen flex flex-col">
-      <nav className="bg-white border-b border-gray-200 px-6 py-3">
-        <div className="flex items-center justify-between">
+      <nav className="bg-white border-b border-gray-200 px-3 py-3">
+        <div className="flex flex-wrap items-center justify-between gap-2">
           <div className="flex items-center gap-2">
             <span className="text-2xl font-bold text-blue-600">LazyJob</span>
-            <span className="text-xs text-gray-400 bg-gray-100 px-2 py-0.5 rounded-full">v1.0</span>
+            <span className="text-xs text-gray-400 bg-gray-100 px-2 py-0.5 rounded-full">local</span>
           </div>
           <div className="flex items-center gap-2">
             <NavLink to="/">Dashboard</NavLink>

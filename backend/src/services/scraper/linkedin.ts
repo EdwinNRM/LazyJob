@@ -35,16 +35,16 @@ export async function scrapeLinkedIn(page: Page, query: string, location: string
     return []
   }
 
-  await page.waitForSelector('.job-card-container', { timeout: 8000 }).catch(() => {})
+  await page.waitForSelector('.job-card-container, .base-card', { timeout: 8000 }).catch(() => {})
   await page.waitForTimeout(2000)
 
   const jobs = await page.evaluate(() => {
-    const cards = document.querySelectorAll('.job-card-container')
+    const cards = document.querySelectorAll('.job-card-container, .base-card')
     return Array.from(cards).slice(0, 15).map((card: any) => {
-      const titleEl = card.querySelector('.job-card-list__title')
-      const companyEl = card.querySelector('.job-card-container__company-name')
-      const locationEl = card.querySelector('.job-card-container__metadata-item')
-      const linkEl = card.querySelector('a')
+      const titleEl = card.querySelector('.job-card-list__title, .base-search-card__title')
+      const companyEl = card.querySelector('.job-card-container__company-name, .base-search-card__subtitle')
+      const locationEl = card.querySelector('.job-card-container__metadata-item, .job-search-card__location')
+      const linkEl = card.querySelector('a.base-card__full-link, a.job-card-list__title, a')
 
       return {
         title: titleEl?.innerText?.trim() || '',

@@ -1,51 +1,20 @@
+// Legacy command retained as a read-only audit; it must never delete candidatures.
 import { PrismaClient } from '@prisma/client'
-import { matchesExpectedLocation } from '../src/services/scraper/utils'
-
-const p = new PrismaClient()
-const expected = ['Remoto', 'São José do Rio Preto']
-
-function indeedJobKey(url: string): string | null {
-  try {
-    const u = new URL(url)
-    return u.searchParams.get('jk')
-  } catch {
-    return null
-  }
-}
-
+import { classifyJob } from '../src/services/classification'
+import { dedupKey } from '../src/services/scraper/utils'
+process.env.DATABASE_URL ||= 'file:./dev.db'
+const prisma = new PrismaClient()
 async function main() {
-  const jobs = await p.job.findMany({ orderBy: { createdAt: 'asc' } })
-
-  const offLocation = jobs.filter((j) => {
-    const loc = (j.location || '').trim()
-    if (!loc || /não informado|nao informado/i.test(loc)) return false
-    return !matchesExpectedLocation(loc, expected)
-  })
-  const offIds = new Set(offLocation.map((j) => j.id))
-  console.log('Fora da localização esperada:', offIds.size)
-
-  const dupIds = new Set<string>()
-  const seen = new Map<string, string>()
-  for (const j of jobs) {
-    if (offIds.has(j.id)) continue
-    let key = null
-    if (j.platform === 'indeed') {
-      key = indeedJobKey(j.url)
-    }
-    if (!key) key = `${j.platform}|${(j.title || '').toLowerCase()}|${(j.company || '').toLowerCase()}`
-    if (seen.has(key)) {
-      dupIds.add(j.id)
-    } else {
-      seen.set(key, j.id)
-    }
-  }
-  console.log('Duplicadas (mesmo jk ou title|company|platform):', dupIds.size)
-
-  const delDup = await p.job.deleteMany({ where: { id: { in: [...dupIds] } } })
-  const delLoc = await p.job.deleteMany({ where: { id: { in: [...offIds] } } })
-  const remaining = await p.job.count()
-  console.log(`Deletadas: ${delDup.count} duplicadas + ${delLoc.count} fora-localização = ${delDup.count + delLoc.count}`)
-  console.log('Restantes no banco:', remaining)
+ const jobs = await prisma.job.findMany()
+ const keys = new Set<string>()
+ let duplicates = 0, accepted = 0, pending = 0
+ for (const job of jobs) {
+  const key = dedupKey(job); if (keys.has(key)) duplicates++; keys.add(key)
+  const result = classifyJob(job)
+  if (result.accepted) accepted++
+  else if (result.confidence < 0.7) pending++
+ }
+ console.log({ total: jobs.length, accepted, pending, possibleDuplicates: duplicates })
+ console.log('Auditoria somente leitura. Nenhuma vaga foi alterada ou removida.')
 }
-
-main().finally(() => p.$disconnect())
+main().catch(error => { console.error(error.message); process.exitCode = 1 }).finally(() => prisma.$disconnect())

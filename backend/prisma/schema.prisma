@@ -4,7 +4,7 @@ generator client {
 
 datasource db {
   provider = "sqlite"
-  url      = "file:./dev.db"
+  url      = env("DATABASE_URL")
 }
 
 model Job {
@@ -20,9 +20,37 @@ model Job {
   columnOrder Int      @default(0)
   appliedAt   DateTime?
   cvPath      String?
+  cvStatus    String   @default("idle")
+  cvError     String?
+  activeCvVersionId String?
   notes       String?
+  workMode    String?
+  brazilEligible Boolean @default(false)
+  isTech      Boolean @default(false)
+  classificationStatus String @default("pending")
+  classificationConfidence Float @default(0)
+  classificationReason String?
+  seniority   String?
+  technologies String?
+  publishedAt DateTime?
+  canonicalUrl String?
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
+  cvVersions  CvVersion[]
+}
+
+model CvVersion {
+  id            String   @id @default(uuid())
+  jobId         String
+  job           Job      @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  originalText  String
+  optimizedText String
+  pdfPath       String
+  atsReport     String
+  model         String
+  promptVersion String   @default("v1")
+  usedFallback  Boolean  @default(false)
+  createdAt     DateTime @default(now())
 }
 
 model Setting {
@@ -39,5 +67,16 @@ model ScrapeLog {
   resultsCount Int      @default(0)
   success      Boolean  @default(true)
   errorMessage String?
+  createdAt    DateTime @default(now())
+}
+
+model ScrapeRun {
+  id           String   @id @default(uuid())
+  status       String   @default("queued")
+  sources      String
+  resultsCount Int      @default(0)
+  errorMessage String?
+  startedAt    DateTime?
+  finishedAt   DateTime?
   createdAt    DateTime @default(now())
 }

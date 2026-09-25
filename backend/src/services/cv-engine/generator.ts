@@ -1,83 +1,46 @@
-import { PDFDocument, StandardFonts, rgb } from 'pdf-lib'
+import { PDFDocument, rgb } from 'pdf-lib'
+import fontkit from '@pdf-lib/fontkit'
 import fs from 'fs'
 import path from 'path'
-
+import { randomUUID } from 'crypto'
 export async function generateCV(text: string, outputPath: string): Promise<string> {
-  const doc = await PDFDocument.create()
-  const font = await doc.embedFont(StandardFonts.Helvetica)
-  const boldFont = await doc.embedFont(StandardFonts.HelveticaBold)
-
-  const margin = 50
-  const maxWidth = 500
-  const lineHeight = 14
-  const fontSize = 10
-  const titleSize = 14
-
-  const lines = text.split('\n')
-  const pages: string[][] = []
-  let currentPage: string[] = []
-
-  for (const line of lines) {
-    if (line.trim() === line.toUpperCase() && line.trim().length > 0) {
-      currentPage.push(`__TITLE__:${line.trim()}`)
-    } else {
-      const words = line.split(' ')
-      let wrapped = ''
-      for (const word of words) {
-        const test = wrapped ? `${wrapped} ${word}` : word
-        const width = font.widthOfTextAtSize(test, fontSize)
-        if (width > maxWidth && wrapped) {
-          currentPage.push(wrapped)
-          wrapped = word
-        } else {
-          wrapped = test
-        }
-      }
-      if (wrapped) currentPage.push(wrapped)
-
-      currentPage.push('')
-    }
+ if (!text.trim()) throw new Error('O currículo não pode ficar vazio')
+ const doc = await PDFDocument.create()
+ doc.registerFontkit(fontkit)
+ const fontsDir = path.resolve(__dirname, '../../../assets/fonts')
+ const font = await doc.embedFont(fs.readFileSync(path.join(fontsDir, 'NotoSans-Regular.ttf')), { subset: true })
+ const bold = await doc.embedFont(fs.readFileSync(path.join(fontsDir, 'NotoSans-Bold.ttf')), { subset: true })
+ const supported = new Set(font.getCharacterSet())
+ const clean = text.replace(/\r/g, '').replace(/\t/g, '    ')
+ const unsupported = [...new Set([...clean].filter(c => c !== '\n' && !supported.has(c.codePointAt(0)!)))]
+ if (unsupported.length) throw new Error('Caracteres não suportados pelo PDF: ' + unsupported.join(' ') + '. Substitua-os no texto revisado.')
+ const margin = 48, width = 595.28, height = 841.89, maxWidth = width - margin * 2
+ let page = doc.addPage([width, height]), y = height - margin
+ for (const line of clean.split('\n')) {
+  const title = /\p{L}/u.test(line) && line.trim() === line.toUpperCase() && line.length < 180
+  const face = title ? bold : font, size = title ? 12 : 10, spacing = title ? 19 : 15
+  if (title && y < margin + 3 * spacing) { page = doc.addPage([width, height]); y = height - margin }
+  const wrapped: string[] = []
+  let current = ''
+  // Character-level fallback also wraps long URLs and unbroken words.
+  for (const char of line) {
+   if (face.widthOfTextAtSize(current + char, size) > maxWidth && current) {
+    const space = current.lastIndexOf(' ')
+    if (space > current.length / 2) { wrapped.push(current.slice(0, space)); current = current.slice(space + 1) }
+    else { wrapped.push(current); current = '' }
+   }
+   current += char
   }
-
-  pages.push(currentPage)
-
-  for (const pageLines of pages) {
-    const page = doc.addPage([612, 792])
-    let y = 750
-
-    for (const line of pageLines) {
-      if (y < margin) {
-        break
-      }
-
-      if (line.startsWith('__TITLE__:')) {
-        const title = line.replace('__TITLE__:', '')
-        page.drawText(title, {
-          x: margin,
-          y,
-          size: titleSize,
-          font: boldFont,
-          color: rgb(0.2, 0.2, 0.4),
-        })
-        y -= titleSize + 6
-      } else if (line.trim() === '') {
-        y -= lineHeight / 2
-      } else {
-        page.drawText(line, {
-          x: margin,
-          y,
-          size: fontSize,
-          font,
-          color: rgb(0.1, 0.1, 0.1),
-        })
-        y -= lineHeight
-      }
-    }
+  wrapped.push(current)
+  for (const row of wrapped) {
+   if (y < margin + spacing) { page = doc.addPage([width, height]); y = height - margin }
+   if (row.trim()) page.drawText(row, { x: margin, y, size, font: face, color: rgb(0.12,0.15,0.2) })
+   y -= row.trim() ? spacing : 8
   }
-
-  const pdfBytes = await doc.save()
-  fs.mkdirSync(path.dirname(outputPath), { recursive: true })
-  fs.writeFileSync(outputPath, pdfBytes)
-
-  return outputPath
+ }
+ fs.mkdirSync(path.dirname(outputPath), { recursive: true })
+ const temporary = outputPath + '.' + randomUUID() + '.tmp'
+ try { fs.writeFileSync(temporary, await doc.save()); fs.renameSync(temporary, outputPath) }
+ finally { if (fs.existsSync(temporary)) fs.unlinkSync(temporary) }
+ return outputPath
 }

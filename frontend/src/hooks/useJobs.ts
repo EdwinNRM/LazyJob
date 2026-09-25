@@ -4,7 +4,7 @@ import {
   fetchJob,
   updateJobStatus,
   deleteJob,
-  triggerApply,
+  fetchCvVersions, generateCv, updateCv,
   createJob,
 } from '../services/api'
 import { Job } from '../types'
@@ -13,10 +13,12 @@ export function useJobs(params?: {
   status?: string
   platform?: string
   query?: string
+  includeExcluded?: boolean
 }) {
   return useQuery({
     queryKey: ['jobs', params],
     queryFn: () => fetchJobs(params),
+    refetchInterval: 3000,
   })
 }
 
@@ -25,6 +27,7 @@ export function useJob(id: string) {
     queryKey: ['job', id],
     queryFn: () => fetchJob(id),
     enabled: !!id,
+    refetchInterval: 1000,
   })
 }
 
@@ -34,6 +37,7 @@ export function useCreateJob(onSuccess?: () => void) {
     mutationFn: createJob,
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['jobs'] })
+      queryClient.invalidateQueries({ queryKey: ['job'] })
       onSuccess?.()
     },
   })
@@ -46,6 +50,7 @@ export function useUpdateJobStatus(onSuccess?: () => void) {
       updateJobStatus(jobId, data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['jobs'] })
+      queryClient.invalidateQueries({ queryKey: ['job'] })
       onSuccess?.()
     },
   })
@@ -57,18 +62,28 @@ export function useDeleteJob(onSuccess?: () => void) {
     mutationFn: deleteJob,
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['jobs'] })
+      queryClient.invalidateQueries({ queryKey: ['job'] })
       onSuccess?.()
     },
   })
 }
 
-export function useTriggerApply(onSuccess?: () => void) {
+export function useCvVersions(jobId: string) {
+  return useQuery({ queryKey: ['cvVersions', jobId], queryFn: () => fetchCvVersions(jobId), enabled: !!jobId, refetchInterval: 3000 })
+}
+
+export function useGenerateCv(onSuccess?: () => void) {
   const queryClient = useQueryClient()
   return useMutation({
-    mutationFn: triggerApply,
+    mutationFn: generateCv,
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['jobs'] })
+      queryClient.invalidateQueries({ queryKey: ['cvVersions'] }); queryClient.invalidateQueries({ queryKey: ['job'] })
       onSuccess?.()
     },
   })
+}
+
+export function useUpdateCv() {
+  const queryClient = useQueryClient()
+  return useMutation({ mutationFn: ({ jobId, versionId, optimizedText }: { jobId: string; versionId: string; optimizedText: string }) => updateCv(jobId, versionId, optimizedText), onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['cvVersions'] }); queryClient.invalidateQueries({ queryKey: ['job'] }) } })
 }

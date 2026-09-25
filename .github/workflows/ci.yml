@@ -1,0 +1,35 @@
+name: Validation
+on:
+  push:
+    branches: [main]
+  pull_request:
+permissions:
+  contents: read
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      DATABASE_URL: file:./ci.db
+      DISABLE_SCHEDULER: '1'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: |
+            backend/package-lock.json
+            frontend/package-lock.json
+      - run: npm run setup
+      - run: npm --prefix frontend exec -- playwright install --with-deps chromium
+      - run: npm test
+      - run: npm run test:e2e
+      - run: npm --prefix backend audit --audit-level=moderate
+      - run: npm --prefix frontend audit --audit-level=moderate
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: browser-results
+          path: frontend/test-results/
+          retention-days: 7

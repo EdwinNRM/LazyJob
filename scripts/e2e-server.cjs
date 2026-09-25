@@ -1,0 +1,13 @@
+const fs = require('node:fs')
+const path = require('node:path')
+const { spawn, spawnSync } = require('node:child_process')
+const root = path.resolve(__dirname,'..')
+const temp = path.join(root,'.e2e',Date.now().toString())
+fs.mkdirSync(temp,{recursive:true})
+const env = {...process.env, DATABASE_URL:'file:'+path.join(temp,'test.db').replace(/\\/g,'/'), CV_OUTPUT_DIR:path.join(temp,'cvs'), PORT:'4317', DISABLE_SCHEDULER:'1'}
+const migrate = spawnSync(process.execPath,['scripts/db.cjs','migrate','deploy'],{cwd:path.join(root,'backend'),env,stdio:'inherit'})
+if(migrate.status!==0) process.exit(migrate.status||1)
+const server = spawn(process.execPath,['dist/index.js'],{cwd:path.join(root,'backend'),env,stdio:'inherit'})
+server.on('exit',code=>process.exit(code||0))
+process.on('SIGTERM',()=>server.kill())
+process.on('SIGINT',()=>server.kill())

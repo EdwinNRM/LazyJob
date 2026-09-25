@@ -1,184 +1,98 @@
 import { chromium, Page } from 'playwright'
-import { PrismaClient } from '@prisma/client'
+import type { PrismaClient } from '@prisma/client'
 import { scrapeLinkedIn } from './linkedin'
 import { scrapeIndeed } from './indeed'
 import { scrapeGupy } from './gupy'
 import { scrapeGlassdoor } from './glassdoor'
-import { dedupKey, normalizeText } from './utils'
-import { readLLMConfig, filterJobsByRelevance, JobForRelevance } from '../llm'
-
+import { scrapeNerdin } from './nerdin'
+import { scrapeRss, scrapeJsonApis } from './feeds'
+import { dedupKey } from './utils'
+import { canonicalizeUrl, classifyJob } from '../classification'
+import { createJobSchema } from '../../lib/validation'
 interface ScrapeOptions {
-  queries: string[]
-  locations?: string[]
-  platforms?: ('linkedin' | 'indeed' | 'gupy' | 'glassdoor')[]
-  prisma?: PrismaClient
-  headless?: boolean
+ queries: string[]; locations?: string[]
+ platforms?: ('linkedin'|'indeed'|'gupy'|'glassdoor'|'nerdin'|'rss'|'api')[]
+ prisma?: PrismaClient; headless?: boolean
+ onSourceResult?: (source: string, error?: string) => void
 }
-
-interface ScrapedJob {
-  title: string
-  company: string
-  platform: string
-  url: string
-  description: string
-  salary?: string
-  location?: string
-}
-
+interface ScrapedJob { title: string; company: string; platform: string; url: string; description: string; salary?: string; location?: string; publishedAt?: string }
 export async function scrapeAllPlatforms(options: ScrapeOptions): Promise<ScrapedJob[]> {
-  const { queries, locations = [], platforms, prisma, headless = true } = options
-
-  if (queries.length === 0) return []
-
-  const enabledPlatforms = platforms ?? ['linkedin', 'indeed', 'gupy', 'glassdoor']
-  const allResults: ScrapedJob[] = []
-
-  const scrapers: Record<string, (page: Page, q: string, loc: string) => Promise<ScrapedJob[]>> = {
-    linkedin: scrapeLinkedIn,
-    indeed: scrapeIndeed,
-    gupy: scrapeGupy,
-    glassdoor: scrapeGlassdoor,
+ const { queries, prisma } = options
+ if (!queries.length) return []
+ const platforms = options.platforms ?? ['linkedin','indeed','gupy','glassdoor','nerdin','rss','api']
+ const locations = options.locations?.length ? options.locations : ['Remoto Brasil']
+ const results: ScrapedJob[] = []
+ const existing = prisma ? await prisma.job.findMany({ select: { title: true, company: true, platform: true, url: true, description: true } }) : []
+ const keys = new Set(existing.map(dedupKey)), urls = new Set(existing.map(j => canonicalizeUrl(j.url)))
+ async function save(jobs: ScrapedJob[]) {
+  let count = 0
+  for (const raw of jobs) {
+   const checked = createJobSchema.safeParse(raw)
+   if (!checked.success) continue
+   const job = { ...checked.data, url: canonicalizeUrl(raw.url) }
+   const key = dedupKey(job)
+   if (keys.has(key) || urls.has(job.url)) continue
+   const result = classifyJob(job)
+   if (prisma) {
+    try {
+     await prisma.job.create({ data: { ...job, canonicalUrl: job.url, status: 'discovered',
+      workMode: result.workMode, brazilEligible: result.brazilEligible, isTech: result.isTech,
+      classificationStatus: result.accepted ? 'accepted' : result.confidence < 0.7 ? 'pending' : 'excluded',
+      classificationConfidence: result.confidence, classificationReason: result.reason,
+      seniority: result.seniority, technologies: JSON.stringify(result.technologies),
+      publishedAt: raw.publishedAt && !Number.isNaN(Date.parse(raw.publishedAt)) ? new Date(raw.publishedAt) : undefined,
+     } })
+    } catch (error) { if ((error as {code?:string}).code === 'P2002') continue; throw error }
+   }
+   keys.add(key); urls.add(job.url); results.push(raw); count++
   }
-
-  const existing = prisma
-    ? await prisma.job.findMany({ select: { title: true, company: true, platform: true, url: true, status: true } })
-    : []
-
-  const existingKeys = new Set(existing.map((j) => dedupKey(j as any)))
-  const existingUrls = new Set(existing.map((j) => normalizeText(j.url)))
-  const existingAppliedKeys = new Set(
-    existing
-      .filter((j) => j.status === 'applied' || j.status === 'applying')
-      .map((j) => dedupKey(j as any))
-  )
-
-  const resultKeys = new Set<string>()
-  const resultUrls = new Set<string>()
-
-  let savedCount = 0
-  let skippedCount = 0
-  let removedByLLM = 0
-
-  const savedJobs: JobForRelevance[] = []
-
-  const browser = await chromium.launch({ headless })
-  const context = await browser.newContext({
-    userAgent:
-      'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-    viewport: { width: 1366, height: 768 },
-    locale: 'pt-BR',
-  })
-
+  return count
+ }
+ async function collect(platform: string, query: string, fn: () => Promise<ScrapedJob[]>) {
   try {
-    for (const platform of enabledPlatforms) {
-      const scraper = scrapers[platform]
-      if (!scraper) continue
-
-      const page = await context.newPage()
-
-      for (const query of queries) {
-        for (const location of locations) {
-          const logEntry = prisma
-            ? await prisma.scrapeLog.create({
-                data: { platform, query, resultsCount: 0, success: false },
-              })
-            : null
-
-          try {
-            console.log(`[Scraper] ${platform}: buscando "${query}" em "${location}"`)
-            const results = await scraper(page, query, location)
-
-            for (const job of results) {
-              const key = dedupKey(job)
-              const urlKey = normalizeText(job.url)
-
-              if (!resultKeys.has(key) && !resultUrls.has(urlKey)) {
-                resultKeys.add(key)
-                resultUrls.add(urlKey)
-                allResults.push(job)
-              }
-
-              if (!prisma) continue
-
-              if (existingKeys.has(key)) {
-                if (existingAppliedKeys.has(key)) {
-                  console.log(`[Scraper] Pula "${job.title}" em ${job.company} — vaga já candidatada.`)
-                }
-                skippedCount++
-                continue
-              }
-
-              if (existingUrls.has(urlKey)) {
-                skippedCount++
-                continue
-              }
-
-              try {
-                const created = await prisma.job.create({
-                  data: { ...job, status: 'discovered' },
-                })
-                existingKeys.add(key)
-                existingUrls.add(urlKey)
-                savedCount++
-                savedJobs.push({
-                  id: created.id,
-                  title: job.title,
-                  company: job.company,
-                  location: job.location,
-                  description: job.description,
-                })
-              } catch {
-                skippedCount++
-              }
-            }
-
-            if (prisma && logEntry) {
-              await prisma.scrapeLog.update({
-                where: { id: logEntry.id },
-                data: { resultsCount: results.length, success: true },
-              })
-            }
-          } catch (error) {
-            console.error(`[Scraper] Erro em ${platform} para "${query}":`, error)
-            if (prisma && logEntry) {
-              await prisma.scrapeLog.update({
-                where: { id: logEntry.id },
-                data: { success: false, errorMessage: String(error) },
-              })
-            }
-          }
-        }
-      }
-
-      await page.close().catch(() => {})
-    }
-  } finally {
-    await context.close().catch(() => {})
-    await browser.close().catch(() => {})
+   const count = await save(await fn())
+   if (prisma) await prisma.scrapeLog.create({ data: { platform, query, resultsCount: count, success: true } })
+   options.onSourceResult?.(platform)
+  } catch (error) {
+   const message = error instanceof Error ? error.message : String(error)
+   if (prisma) await prisma.scrapeLog.create({ data: { platform, query, success: false, errorMessage: message } })
+   options.onSourceResult?.(platform, message)
   }
-
-  // LLM-based relevance filter: remove jobs that don't match the configured locations
-  if (prisma && savedJobs.length > 0) {
-    const llm = await readLLMConfig(prisma)
-    if (llm) {
-      console.log(`[Scraper] LLM filtrando ${savedJobs.length} vagas contra localizações ${JSON.stringify(locations)}...`)
-      const { keep, remove } = await filterJobsByRelevance(savedJobs, locations, llm)
-
-      if (remove.length > 0) {
-        await prisma.job.deleteMany({ where: { id: { in: remove } } })
-        removedByLLM = remove.length
-        console.log(`[Scraper] LLM removeu ${removedByLLM} vagas irrelevantes.`)
-      }
-    } else {
-      console.log('[Scraper] Nenhum LLM configurado — todas as vagas salvas são mantidas.')
-    }
+ }
+ // Each feed is independent; browser installation/blocking cannot prevent feed imports.
+ for (const platform of platforms.filter(p => p === 'rss' || p === 'api')) {
+  const setting = prisma ? await prisma.setting.findUnique({ where: { key: platform === 'rss' ? 'rssUrls' : 'publicApiUrls' } }) : null
+  let addresses: string[] = []
+  try { addresses = JSON.parse(setting?.value || '[]'); if (!Array.isArray(addresses)) throw new Error() }
+  catch { await collect(platform, 'configuração', async () => { throw new Error('Lista de URLs inválida') }); continue }
+  if (!addresses.length) { await collect(platform, 'configuração', async () => { throw new Error('Nenhuma URL configurada para esta fonte') }); continue }
+  for (const address of addresses) await collect(platform, address, () => platform === 'rss' ? scrapeRss([address]) : scrapeJsonApis([address]))
+ }
+ const scrapers: Record<string, (page: Page, q: string, loc: string) => Promise<ScrapedJob[]>> = {
+  linkedin: scrapeLinkedIn, indeed: scrapeIndeed, gupy: scrapeGupy, glassdoor: scrapeGlassdoor, nerdin: scrapeNerdin,
+ }
+ for (const platform of platforms.filter(p => p !== 'rss' && p !== 'api')) {
+  for (const query of queries) for (const location of locations) {
+   await collect(platform, query, async () => {
+    const browser = await chromium.launch({ headless: options.headless ?? true, ...(process.env.PLAYWRIGHT_CHANNEL ? { channel: process.env.PLAYWRIGHT_CHANNEL } : {}) })
+    try {
+     const context = await browser.newContext({ locale: 'pt-BR', viewport: { width: 1366, height: 768 } })
+     const page = await context.newPage()
+     let responseStatus = 200
+     page.on('response', response => { if (response.request().isNavigationRequest() && response.frame() === page.mainFrame()) responseStatus = response.status() })
+     page.setDefaultTimeout(15000); page.setDefaultNavigationTimeout(30000)
+     const found = await scrapers[platform](page, query, location)
+     if (responseStatus >= 400) throw new Error('Fonte indisponível ou bloqueada: HTTP ' + responseStatus + '. Consulte o site manualmente.')
+     if (!found.length) {
+      const body = await page.locator('body').innerText()
+      if (/captcha|access denied|verify you are human|verifique.*humano|sign in|faça login|just a moment|security check|solicita[cç][aã]o bloqueada|somente humanos|o sistema bloqueou/i.test(body) || /authwall|login|checkpoint/.test(page.url())) throw new Error('Fonte bloqueou o acesso ou exige login. Abra o site e adicione a vaga manualmente.')
+      // Empty pages and changed markup are indistinguishable from no results.
+      throw new Error('Nenhuma vaga legível: a busca pode estar vazia ou o site mudou. Confira a fonte manualmente.')
+     }
+     return found
+    } finally { await browser.close() }
+   })
   }
-
-  if (prisma) {
-    console.log(
-      `[Scraper] Resumo: ${savedCount} salvas, ${skippedCount} duplicadas/já candidatadas, ${removedByLLM} removidas pelo LLM.`
-    )
-  }
-
-  return allResults
+ }
+ return results
 }

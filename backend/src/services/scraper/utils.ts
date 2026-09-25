@@ -80,6 +80,7 @@ export async function waitForChallengeClear(page: Page, timeoutMs = 20000): Prom
   return false
 }
 
-export function dedupKey(job: { title: string; company: string; platform: string; url?: string }): string {
-  return `${normalizeText(job.platform)}|${normalizeText(job.title)}|${normalizeText(job.company)}`
+export function dedupKey(job: { title: string; company: string; platform?: string; url?: string; description?: string | null }): string {
+  const descriptionFingerprint = normalizeText(job.description || '').slice(0, 200)
+  return `${normalizeText(job.title)}|${normalizeText(job.company)}|${descriptionFingerprint}`
 }

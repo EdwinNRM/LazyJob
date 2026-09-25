@@ -1,3 +1,4 @@
+import toast from 'react-hot-toast'
 import { useState, useCallback, useRef } from 'react'
 import {
   DndContext,
@@ -78,7 +79,7 @@ export function KanbanBoard({ jobs, onJobDetail }: KanbanBoardProps) {
             status: newStatus,
             columnOrder: jobs.filter((j) => j.status === newStatus).length,
           },
-        })
+        }, { onError: error => toast.error(error.message) })
       }
     },
     [jobs, findColumn, updateJobStatus]

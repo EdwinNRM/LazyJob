@@ -14,6 +14,7 @@ const PLATFORM_LABELS: Record<string, string> = {
   indeed: 'Indeed',
   gupy: 'Gupy',
   glassdoor: 'Glassdoor',
+  nerdin: 'Nerdin', rss: 'RSS', api: 'API', manual: 'Manual',
 }
 
 export function JobCard({ job, onClick, lastDragEnd }: JobCardProps) {
@@ -46,6 +47,7 @@ export function JobCard({ job, onClick, lastDragEnd }: JobCardProps) {
       {...listeners}
       className="kanban-card"
       onClick={handleClick}
+      onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onClick?.() } }}
       role="button"
       tabIndex={0}
     >
@@ -85,6 +87,9 @@ export function JobCard({ job, onClick, lastDragEnd }: JobCardProps) {
           Candidatado em {new Date(job.appliedAt).toLocaleDateString('pt-BR')}
         </p>
       )}
+      {job.cvStatus === 'generating' && <p className="text-xs text-purple-600 mt-2">Gerando currículo…</p>}
+      {job.cvStatus === 'error' && <p className="text-xs text-red-600 mt-2" title={job.cvError || ''}>Erro ao gerar currículo</p>}
+      {job.cvStatus === 'ready' && <p className="text-xs text-green-600 mt-2">Currículo disponível para revisão</p>}
     </div>
   )
 }

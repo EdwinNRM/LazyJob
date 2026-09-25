@@ -57,7 +57,7 @@ describe('KanbanBoard', () => {
     expect(screen.getByText(/Descobertas/i)).toBeDefined()
     expect(screen.getByText(/Em Análise/i)).toBeDefined()
     expect(screen.getByText(/Ajustar CV/i)).toBeDefined()
-    expect(screen.getByText(/Candidatar/i)).toBeDefined()
+    expect(screen.getByText(/Pronta para candidatura/i)).toBeDefined()
     expect(screen.getByText(/Candidatada/i)).toBeDefined()
     expect(screen.getByText(/Recusada/i)).toBeDefined()
   })

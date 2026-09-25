@@ -48,7 +48,7 @@ export async function scrapeIndeed(page: Page, query: string, location: string):
           title: linkEl?.innerText?.trim() || '',
           company: companyEl?.innerText?.trim() || '',
           platform: 'indeed',
-          url: href ? `https://br.indeed.com${href.startsWith('/') ? href : `/${href}`}` : '',
+          url: href ? new URL(href, 'https://br.indeed.com').href : '',
           description: '',
           salary: salaryEl?.innerText?.trim() || undefined,
           location: locationEl?.innerText?.trim() || undefined,

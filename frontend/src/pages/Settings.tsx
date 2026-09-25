@@ -1,179 +1,67 @@
-import { useState, useCallback } from 'react'
+import { useEffect, useState } from 'react'
 import toast from 'react-hot-toast'
-import { useSettings, useUpdateSetting } from '../hooks/useSettings'
-
+import { useQueryClient } from '@tanstack/react-query'
+import { useSettings } from '../hooks/useSettings'
+import { fetchBaseCvText, saveSettings } from '../services/api'
+const defaults: Record<string,string> = {
+ cvBasePath: '', cvBaseText: '', llmProvider: 'none', llmModel: '', llmBaseUrl: '', llmApiKey: '',
+ searchQueries: '["desenvolvedor de software"]', searchLocations: '["Remoto Brasil"]',
+ enabledSources: '["nerdin"]', rssUrls: '[]', publicApiUrls: '[]',
+}
 export function Settings() {
-  const { data: settings, isLoading } = useSettings()
-  const updateSetting = useUpdateSetting()
-
-  const [formData, setFormData] = useState<Record<string, string>>({})
-
-  const handleSave = useCallback(
-    async (key: string, value: string) => {
-      try {
-        await updateSetting.mutateAsync({ key, value })
-        toast.success(`Configuração "${key}" salva!`)
-      } catch (err) {
-        toast.error(`Erro ao salvar: ${err}`)
-      }
-    },
-    [updateSetting]
-  )
-
-  if (isLoading) {
-    return (
-      <div className="flex items-center justify-center h-64">
-        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600" />
-      </div>
-    )
-  }
-
-  return (
-    <div className="max-w-3xl mx-auto py-8 px-4">
-      <h1 className="text-2xl font-bold text-gray-900 mb-8">Configurações</h1>
-
-      <div className="space-y-6">
-        <section className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
-          <h2 className="text-lg font-semibold mb-4">Currículo</h2>
-          <div className="space-y-4">
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                Caminho do CV Base (PDF)
-              </label>
-              <input
-                type="text"
-                defaultValue={settings?.cvBasePath || ''}
-                placeholder="/home/user/meu-curriculo.pdf"
-                onBlur={(e) => handleSave('cvBasePath', e.target.value)}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-              />
-              <p className="text-xs text-gray-500 mt-1">Caminho absoluto para o arquivo PDF do seu currículo</p>
-            </div>
-          </div>
-        </section>
-
-        <section className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
-          <h2 className="text-lg font-semibold mb-4">IA para Otimização de CV</h2>
-          <div className="space-y-4">
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                Provedor LLM
-              </label>
-              <select
-                defaultValue={settings?.llmProvider || 'ollama'}
-                onChange={(e) => handleSave('llmProvider', e.target.value)}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-              >
-                <option value="ollama">Ollama (local)</option>
-                <option value="openai">OpenAI</option>
-                <option value="anthropic">Anthropic (Claude)</option>
-                <option value="none">Nenhum (regras locais)</option>
-              </select>
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                Modelo LLM
-              </label>
-              <input
-                type="text"
-                defaultValue={settings?.llmModel || 'qwen2.5-coder:7b'}
-                placeholder="qwen2.5-coder:7b"
-                onBlur={(e) => handleSave('llmModel', e.target.value)}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-              />
-              <p className="text-xs text-gray-500 mt-1">Nome do modelo no Ollama (ex.: qwen2.5-coder:7b)</p>
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                URL Base (Ollama)
-              </label>
-              <input
-                type="text"
-                defaultValue={settings?.llmBaseUrl || 'http://localhost:11434'}
-                placeholder="http://localhost:11434"
-                onBlur={(e) => handleSave('llmBaseUrl', e.target.value)}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-              />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                API Key (apenas OpenAI/Anthropic)
-              </label>
-              <input
-                type="password"
-                defaultValue={settings?.llmApiKey || ''}
-                placeholder="sk-..."
-                onBlur={(e) => handleSave('llmApiKey', e.target.value)}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-              />
-            </div>
-          </div>
-        </section>
-
-        <section className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
-          <h2 className="text-lg font-semibold mb-4">Busca de Vagas</h2>
-          <div className="space-y-4">
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                Termos de Busca (JSON array)
-              </label>
-              <textarea
-                defaultValue={settings?.searchQueries || '["analista de desenvolvimento de sistemas pleno", "analista de sistemas pleno", "analista desenvolvedor pleno", "desenvolvedor de sistemas pleno"]'}
-                rows={3}
-                onBlur={(e) => handleSave('searchQueries', e.target.value)}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 font-mono"
-              />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                Localizações (JSON array)
-              </label>
-              <textarea
-                defaultValue={settings?.searchLocations || '["Remoto", "São José do Rio Preto"]'}
-                rows={2}
-                onBlur={(e) => handleSave('searchLocations', e.target.value)}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 font-mono"
-              />
-            </div>
-          </div>
-        </section>
-
-        <section className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
-          <h2 className="text-lg font-semibold mb-4">Automação</h2>
-          <div className="space-y-4">
-            <div className="flex items-center justify-between">
-              <div>
-                <label className="text-sm font-medium text-gray-700">Candidatura Automática</label>
-                <p className="text-xs text-gray-500">Quando ativado, mover para "Candidatar" dispara o pipeline. Desativado por padrão (nada é enviado sem sua ação).</p>
-              </div>
-              <label className="relative inline-flex items-center cursor-pointer">
-                <input
-                  type="checkbox"
-                  defaultChecked={settings?.autoApplyEnabled === 'true'}
-                  onChange={(e) => handleSave('autoApplyEnabled', String(e.target.checked))}
-                  className="sr-only peer"
-                />
-                <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-blue-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
-              </label>
-            </div>
-            <div className="flex items-center justify-between">
-              <div>
-                <label className="text-sm font-medium text-gray-700">Navegador Headless</label>
-                <p className="text-xs text-gray-500">Rodar automação sem janela visível</p>
-              </div>
-              <label className="relative inline-flex items-center cursor-pointer">
-                <input
-                  type="checkbox"
-                  defaultChecked={settings?.browserHeadless === 'true'}
-                  onChange={(e) => handleSave('browserHeadless', String(e.target.checked))}
-                  className="sr-only peer"
-                />
-                <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-blue-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
-              </label>
-            </div>
-          </div>
-        </section>
-      </div>
-    </div>
-  )
+ const { data, isLoading, error } = useSettings()
+ const client = useQueryClient()
+ const [form, setForm] = useState<Record<string,string> | null>(null)
+ const [busy, setBusy] = useState(false)
+ useEffect(() => { if (data && !form) setForm(Object.fromEntries(Object.entries(defaults).map(([key,value]) => [key, data[key] ?? value]))) }, [data, form])
+ if (isLoading) return <p className="p-6">Carregando configurações…</p>
+ if (error) return <p role="alert" className="p-6 text-red-700">Não foi possível conectar ao servidor: {error.message}</p>
+ if (!form) return null
+ const change = (key: string, value: string) => setForm({ ...form, [key]: value })
+ const save = async () => {
+  await saveSettings(form)
+  await client.invalidateQueries({ queryKey: ['settings'] })
+ }
+ const field = (key: string, label: string, rows?: number) => <label key={key} className="block text-sm font-medium space-y-1">{label}
+  {rows ? <textarea rows={rows} value={form[key] || ''} onChange={e => change(key,e.target.value)} className="block w-full border rounded-lg p-3 font-mono text-sm" />
+   : <input type={key === 'llmApiKey' ? 'password' : 'text'} value={form[key] || ''} onChange={e => change(key,e.target.value)} className="block w-full border rounded-lg p-3" />}
+ </label>
+ return <form className="max-w-3xl mx-auto py-8 px-4 space-y-6" onSubmit={async e => {
+  e.preventDefault(); setBusy(true)
+  try { await save(); toast.success('Configurações salvas') } catch (error) { toast.error(String(error)) } finally { setBusy(false) }
+ }}>
+  <h1 className="text-2xl font-bold">Configurações</h1>
+  <section className="bg-white border rounded-xl p-5 space-y-4">
+   <h2 className="text-lg font-semibold">Currículo-base</h2>
+   <p className="text-sm text-gray-600">Cole o texto revisado ou extraia de um PDF local. O texto revisado tem prioridade sobre o arquivo.</p>
+   {field('cvBasePath','Caminho absoluto do PDF (opcional)')}
+   <button type="button" disabled={busy || !form.cvBasePath} className="btn-secondary" onClick={async () => {
+    if (form.cvBaseText && !window.confirm('Substituir o texto em edição pela extração do PDF?')) return
+    setBusy(true)
+    try { await save(); const result = await fetchBaseCvText(); change('cvBaseText',result.text); toast.success('Texto extraído. Revise e salve.') }
+    catch (error) { toast.error(String(error)) } finally { setBusy(false) }
+   }}>Extrair do PDF</button>
+   {field('cvBaseText','Texto revisado do currículo',12)}
+  </section>
+  <section className="bg-white border rounded-xl p-5 space-y-4">
+   <h2 className="text-lg font-semibold">IA opcional</h2>
+   <p className="text-sm text-gray-600">Sem IA, o conteúdo é preservado e convertido em PDF. Com IA, apenas a ordem das seções pode mudar; os fatos são preservados. Provedores externos recebem o texto do currículo e a descrição da vaga.</p>
+   <label className="block text-sm font-medium">Provedor
+    <select aria-label="Provedor" className="block w-full border rounded-lg p-3" value={form.llmProvider} onChange={e => {
+     const provider = e.target.value
+     setForm({ ...form, llmProvider: provider, llmModel: provider === 'ollama' ? 'qwen3:8b' : '', llmBaseUrl: provider === 'ollama' ? 'http://localhost:11434' : '', llmApiKey: '' })
+    }}><option value="none">Sem IA (texto original)</option><option value="ollama">Ollama (local)</option><option value="openai">OpenAI</option><option value="anthropic">Anthropic</option></select>
+   </label>
+   {form.llmProvider !== 'none' && <>{field('llmModel','Modelo')}{field('llmBaseUrl','URL base (vazia usa o padrão do provedor)')}{field('llmApiKey','Chave de API (somente provedores externos)')}</>}
+  </section>
+  <section className="bg-white border rounded-xl p-5 space-y-4">
+   <h2 className="text-lg font-semibold">Busca de vagas</h2>
+   <p className="text-sm text-gray-600">Use listas JSON, por exemplo: ["Python", "React"]. Coletas agendadas às 06h e 18h, horário de Brasília, enquanto o servidor estiver aberto.</p>
+   {field('searchQueries','Termos de busca (JSON)',2)}{field('searchLocations','Localizações (JSON)',2)}
+   {field('enabledSources','Fontes habilitadas (JSON)',2)}
+   <p className="text-xs text-gray-600">Fontes: linkedin, indeed, gupy, glassdoor, nerdin, rss, api. Sites podem exigir login ou bloquear coleta. RSS e API só consultam as URLs configuradas abaixo.</p>
+   {field('rssUrls','Feeds RSS/Atom (JSON)',2)}{field('publicApiUrls','APIs públicas JSON (JSON)',2)}
+  </section>
+  <button type="submit" disabled={busy} className="btn-primary">{busy ? 'Salvando…' : 'Salvar configurações'}</button>
+ </form>
 }

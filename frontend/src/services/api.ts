@@ -1,4 +1,4 @@
-import { Job } from '../types'
+import { CvVersion, Job } from '../types'
 
 const API_BASE = '/api'
 
@@ -21,11 +21,13 @@ export async function fetchJobs(params?: {
   status?: string
   platform?: string
   query?: string
+  includeExcluded?: boolean
 }): Promise<Job[]> {
   const searchParams = new URLSearchParams()
   if (params?.status) searchParams.set('status', params.status)
   if (params?.platform) searchParams.set('platform', params.platform)
   if (params?.query) searchParams.set('query', params.query)
+  if (params?.includeExcluded) searchParams.set('includeExcluded','true')
 
   const qs = searchParams.toString()
   return request<Job[]>(`/jobs${qs ? `?${qs}` : ''}`)
@@ -56,18 +58,17 @@ export async function deleteJob(jobId: string): Promise<void> {
   return request<void>(`/jobs/${jobId}`, { method: 'DELETE' })
 }
 
-export async function triggerApply(jobId: string): Promise<{ message: string }> {
-  return request<{ message: string }>(`/jobs/${jobId}/apply`, {
-    method: 'POST',
-  })
-}
+export const fetchCvVersions = (jobId: string) => request<CvVersion[]>(`/jobs/${jobId}/cv`)
+export const generateCv = (jobId: string) => request<{ message: string }>(`/jobs/${jobId}/cv/generate`, { method: 'POST' })
+export const updateCv = (jobId: string, versionId: string, optimizedText: string) => request<CvVersion>(`/jobs/${jobId}/cv/${versionId}`, { method: 'PUT', body: JSON.stringify({ optimizedText }) })
+export const cvDownloadUrl = (jobId: string, versionId: string) => `${API_BASE}/jobs/${jobId}/cv/${versionId}/download`
 
 export async function runScrape(data: {
-  queries: string[]
+  queries?: string[]
   locations?: string[]
   platforms?: string[]
-}): Promise<{ message: string; resultsCount?: number }> {
-  return request<{ message: string; resultsCount?: number }>('/scrape/run', {
+}): Promise<{ message: string; runId: string }> {
+  return request<{ message: string; runId: string }>('/scrape/run', {
     method: 'POST',
     body: JSON.stringify(data),
   })
@@ -87,6 +88,10 @@ export async function updateSetting(
   })
 }
 
+export async function fetchBaseCvText(): Promise<{ text: string }> {
+  return request<{ text: string }>('/settings/cv-base/preview')
+}
+
 export async function fetchScrapeLogs(): Promise<
   Array<{
     id: string
@@ -100,3 +105,7 @@ export async function fetchScrapeLogs(): Promise<
 > {
   return request('/scrape/logs')
 }
+
+export interface ScrapeRun { id: string; status: string; resultsCount: number; errorMessage: string | null; createdAt: string }
+export const fetchLatestRun = () => request<ScrapeRun | null>('/scrape/runs/latest')
+export const saveSettings = (data: Record<string,string>) => request('/settings', { method: 'PUT', body: JSON.stringify(data) })

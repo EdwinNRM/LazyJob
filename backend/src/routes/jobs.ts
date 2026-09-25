@@ -1,24 +1,25 @@
 import { Router } from 'express'
 import { PrismaClient } from '@prisma/client'
 import { createJobSchema, updateJobSchema } from '../lib/validation'
-import { applyForJob } from '../services/apply'
+import fs from 'fs'
+import { generateCvVersion, updateCvVersion, isGenerating } from '../services/cv-engine/workflow'
 
 export function jobRoutes(prisma: PrismaClient) {
   const router = Router()
 
   router.get('/', async (req, res) => {
     try {
-      const { status, platform, query } = req.query
-      const where: Record<string, unknown> = {}
+      const { status, platform, query, includeExcluded } = req.query
+      const where: Record<string, unknown> = includeExcluded === 'true' ? {} : { OR: [{ classificationStatus: { not: 'excluded' } }, { status: { notIn: ['discovered','rejected'] } }] }
 
-      if (status) where.status = status
-      if (platform) where.platform = platform
-      if (query) {
-        where.OR = [
+      if (typeof status === 'string') where.status = status
+      if (typeof platform === 'string') where.platform = platform
+      if (typeof query === 'string' && query) {
+        where.AND = [{ OR: [
           { title: { contains: query as string } },
           { company: { contains: query as string } },
           { description: { contains: query as string } },
-        ]
+        ] }]
       }
 
       const jobs = await prisma.job.findMany({
@@ -70,29 +71,18 @@ export function jobRoutes(prisma: PrismaClient) {
         return res.status(404).json({ error: 'Vaga não encontrada' })
       }
 
-      if (data.status === 'applied' && typeof data.appliedAt === 'undefined') {
+      if (data.status === 'applied' && !previousJob.appliedAt && typeof data.appliedAt === 'undefined') {
         (data as Record<string, unknown>).appliedAt = new Date().toISOString()
       }
 
+      if (data.status && data.status !== 'applied' && previousJob.status === 'applied') data.appliedAt = null
       const job = await prisma.job.update({
         where: { id: req.params.id },
         data,
       })
 
-      if (data.status === 'applying') {
-        const autoApplySetting = await prisma.setting.findUnique({
-          where: { key: 'autoApplyEnabled' },
-        })
-
-        const autoApplyEnabled = autoApplySetting?.value === 'true'
-
-        if (autoApplyEnabled) {
-          applyForJob(prisma, job).catch(console.error)
-        } else {
-          console.log(
-            `[Jobs] Vaga "${job.title}" movida para "Candidatar" mas auto-apply está desativado. Nada foi enviado.`
-          )
-        }
+      if (data.status === 'adjusting_cv' && previousJob.status !== 'adjusting_cv') {
+        generateCvVersion(prisma, job.id).catch((error) => console.error('[CV]', error))
       }
 
       res.json(job)
@@ -106,24 +96,40 @@ export function jobRoutes(prisma: PrismaClient) {
       await prisma.job.delete({ where: { id: req.params.id } })
       res.status(204).send()
     } catch (error) {
-      res.status(500).json({ error: 'Erro ao remover vaga' })
+      res.status(404).json({ error: 'Vaga não encontrada' })
     }
   })
 
-  router.post('/:id/apply', async (req, res) => {
+  router.get('/:id/cv', async (req, res) => {
+    const versions = await prisma.cvVersion.findMany({ where: { jobId: req.params.id }, orderBy: { createdAt: 'desc' } })
+    res.json(versions.map((v) => ({ ...v, atsReport: JSON.parse(v.atsReport) })))
+  })
+
+  router.post('/:id/cv/generate', async (req, res) => {
+    const job = await prisma.job.findUnique({ where: { id: req.params.id } })
+    if (!job) return res.status(404).json({ error: 'Vaga não encontrada' })
+    if (isGenerating(job.id)) return res.status(409).json({ error: 'Já existe uma geração em andamento' })
+    res.status(202).json({ message: 'Geração de currículo iniciada' })
+    generateCvVersion(prisma, job.id).catch((error) => console.error('[CV]', error))
+  })
+
+  router.put('/:id/cv/:versionId', async (req, res) => {
     try {
-      const job = await prisma.job.findUnique({ where: { id: req.params.id } })
-
-      if (!job) {
-        return res.status(404).json({ error: 'Vaga não encontrada' })
-      }
-
-      res.json({ message: 'Candidatura iniciada', jobId: job.id })
-
-      applyForJob(prisma, job).catch(console.error)
+      if (typeof req.body.optimizedText !== 'string' || req.body.optimizedText.length > 100000) return res.status(400).json({ error: 'Texto inválido (limite: 100.000 caracteres)' })
+      if (isGenerating(req.params.id)) return res.status(409).json({ error: 'Aguarde a geração em andamento' })
+      const optimizedText = req.body.optimizedText.trim()
+      if (!optimizedText) return res.status(400).json({ error: 'O currículo não pode ficar vazio' })
+      const version = await updateCvVersion(prisma, req.params.id, req.params.versionId, optimizedText)
+      res.json({ ...version, atsReport: JSON.parse(version.atsReport) })
     } catch (error) {
-      res.status(500).json({ error: 'Erro ao iniciar candidatura' })
+      res.status(String(error).includes('não encontrada') ? 404 : 400).json({ error: String(error) })
     }
+  })
+
+  router.get('/:id/cv/:versionId/download', async (req, res) => {
+    const version = await prisma.cvVersion.findFirst({ where: { id: req.params.versionId, jobId: req.params.id } })
+    if (!version || !fs.existsSync(version.pdfPath)) return res.status(404).json({ error: 'PDF não encontrado' })
+    res.download(version.pdfPath, `curriculo-${req.params.id}.pdf`)
   })
 
   return router

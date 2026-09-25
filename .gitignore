@@ -7,3 +7,13 @@ generated-cvs/
 linkedin-auth.json
 .DS_Store
 *.log
+
+.e2e/
+playwright-report/
+test-results/
+*.tsbuildinfo
+*.db-wal
+*.db-shm
+output/
+
+/backend/cv-base.pdf

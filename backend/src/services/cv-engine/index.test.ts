@@ -43,9 +43,9 @@ describe('CV Engine Service', () => {
       const llm = { provider: 'ollama' as const, model: 'qwen2.5-coder:7b' }
       const llmFn = vi.spyOn(await import('../llm'), 'runLLM')
 
-      llmFn.mockResolvedValue('RESUMO\nCurrículo otimizado pela IA')
+      llmFn.mockResolvedValue(JSON.stringify({ order: [1,0] }))
       const result = await optimizeCV(cvText, jobDescription, llm)
-      expect(result).toBe('RESUMO\nCurrículo otimizado pela IA')
+      expect(result).toBe('HABILIDADES\nReact, TypeScript\n\nEXPERIÊNCIA\n5 anos como desenvolvedor React')
 
       llmFn.mockRejectedValue(new Error('Ollama offline'))
       const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
