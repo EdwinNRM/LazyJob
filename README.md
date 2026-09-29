@@ -4,7 +4,37 @@ Gerenciador local de oportunidades de trabalho e currículos. Organize vagas em 
 
 **React · TypeScript · Express · Prisma · SQLite · Playwright**
 
-![Kanban do LazyJob com dados fictícios](docs/images/kanban.png)
+| Kanban de oportunidades | Revisão e versões do currículo |
+| --- | --- |
+| ![Kanban do LazyJob com vagas fictícias distribuídas em seis etapas](docs/images/kanban.png) | ![Modal de revisão do currículo fictício com cobertura de palavras-chave e PDF salvo](docs/images/curriculo.png) |
+
+As capturas mostram somente vagas e currículo fictícios. A segunda foi gerada pelo teste de ponta a ponta em 29/09/2026.
+
+## Problema de negócio
+
+Buscar vagas em várias fontes, acompanhar o andamento de cada candidatura e adaptar o currículo são tarefas separadas e repetitivas. Sem um histórico local, é fácil perder contexto sobre a vaga, o documento enviado e a etapa seguinte.
+
+## Solução e fluxo
+
+O LazyJob reúne oportunidades em um Kanban de seis etapas. O usuário pode cadastrar vagas manualmente, consultar fontes configuradas, revisar a adequação do currículo a cada descrição e gerar versões em PDF. A candidatura continua sendo feita pela própria pessoa no site de origem; o LazyJob registra o andamento depois.
+
+```text
+Vaga manual ou coleta configurada → triagem → Kanban
+                                            ↓
+Currículo-base → revisão por vaga → PDF versionado → candidatura no portal → registro da etapa
+```
+
+## Arquitetura
+
+| Parte | Responsabilidade |
+| --- | --- |
+| React, TypeScript e Vite | Interface de Kanban, configurações e revisão de currículo |
+| Express | API HTTP local e distribuição da interface compilada |
+| Prisma e SQLite | Vagas, configurações, histórico e versões no computador do usuário |
+| Playwright | Coleta assistida de portais e testes de navegador |
+| pdf-lib | PDFs de currículo com fonte incorporada |
+
+O backend escuta apenas `127.0.0.1`, e o aplicativo é destinado a uma pessoa em um computador. O projeto mantém o frontend e o backend em pastas separadas, com lockfiles próprios. A geração de PDFs preserva versões anteriores para consulta.
 
 ## Recursos
 
@@ -64,7 +94,7 @@ O texto revisado tem prioridade sobre o PDF. Ao trocar de arquivo, extraia e sal
 
 Portais podem mudar ou bloquear acesso automatizado. O LazyJob informa falhas e mantém o cadastro manual disponível. Coletas sem anúncios legíveis geram aviso, pois podem indicar busca vazia ou mudança no site.
 
-Na verificação local de **24/09/2026**, LinkedIn, Gupy e Nerdin retornaram anúncios. Indeed e Glassdoor responderam HTTP 403 (bloqueio de acesso) e precisam de consulta manual neste ambiente. A disponibilidade futura depende dos portais.
+Em uma verificação anterior, em **24/09/2026**, LinkedIn, Gupy e Nerdin retornaram anúncios; Indeed e Glassdoor responderam HTTP 403. Esses resultados são históricos, não garantem a disponibilidade atual dos portais e não substituem a revisão humana.
 
 RSS/Atom e APIs só consultam URLs configuradas; não há catálogo embutido. RSS aceita título, link, descrição e autor. A API aceita uma lista ou `{ "jobs": [...] }` / `{ "data": [...] }`:
 
@@ -119,4 +149,6 @@ npm --prefix frontend run dev
 
 Abra `http://localhost:5173`. Após alterar o código, execute `npm run build` para atualizar a interface de `npm start`.
 
-Veja [SPEC.md](SPEC.md) e [o relatório de validação](docs/VALIDATION.md). Noto Sans usa [SIL Open Font License](backend/assets/fonts/LICENSE).
+Em **29/09/2026**, `npm run build` compilou backend e frontend, **47 testes de backend** e **10 testes de frontend** passaram. Com o Microsoft Edge instalado, **4 testes de navegador** passaram em desktop e celular, cobrindo configuração, cadastro, geração e versionamento de PDF, etapas de candidatura e estados de erro. Os testes usam banco temporário, vagas fictícias e currículo fictício; não enviam candidaturas. Esta execução não repetiu consultas reais aos portais externos nem usou provedores de IA.
+
+Noto Sans usa a [SIL Open Font License](backend/assets/fonts/LICENSE).
